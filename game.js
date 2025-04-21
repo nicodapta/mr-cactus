@@ -29,11 +29,20 @@ const gameState = {
         frame: 0,
         maxFrames: 15, // Number of frames for the explosion animation
         frameDelay: 100, // Delay between frames in ms (for slow motion)
-        lastFrameTime: 0
+        lastFrameTime: 0,
+        isGameEnding: false // Flag to indicate if this explosion ends the game
     },
     difficultyLevel: 1, // Track the current difficulty level
     enemySpeed: 5, // Base enemy speed
-    spawnChance: 0.7 // Base chance to spawn an enemy (70%)
+    spawnChance: 0.7, // Base chance to spawn an enemy (70%)
+    thorn: {
+        active: false,
+        x: 0,
+        y: 0,
+        speed: 10, // Speed of the thorn
+        width: 5,
+        height: 15
+    }
 };
 
 // Character properties
@@ -84,25 +93,6 @@ function drawCharacter() {
     const mainColor = '#2E8B57';    // Main cactus color
     const darkColor = '#1B4D2E';    // Darker shade for depth
     const lightColor = '#3CB371';   // Lighter shade for highlights
-    const hatColor = '#FFFFFF';     // White for cowboy hat
-    const hatBorderColor = '#CCCCCC'; // Light gray for hat border
-    const hatBandColor = '#8B4513'; // Brown for hat band
-
-    // Draw Texas-style cowboy hat
-    ctx.fillStyle = hatColor;
-    // Hat top (taller and more curved)
-    ctx.fillRect(x + 20, y, 45, 15);
-    // Hat brim (wider and curved)
-    ctx.fillRect(x + 10, y + 10, 65, 12);
-
-    // Hat band
-    ctx.fillStyle = hatBandColor;
-    ctx.fillRect(x + 20, y + 5, 45, 5);
-
-    // Hat border
-    ctx.fillStyle = hatBorderColor;
-    ctx.fillRect(x + 10, y + 10, 65, 3);
-    ctx.fillRect(x + 20, y, 45, 3);
 
     // Draw main cactus body
     ctx.fillStyle = mainColor;
@@ -352,12 +342,8 @@ function updateObstacles() {
     // Check for collisions
     obstacles.forEach(obstacle => {
         if (checkCollision(character, obstacle)) {
-            // Start explosion at collision point (position is now set in the collision check functions)
-            if (!gameState.explosion.active) {
-                gameState.explosion.active = true;
-                gameState.explosion.frame = 0;
-                gameState.explosion.lastFrameTime = currentTime;
-            }
+            // Immediately end the game when an enemy touches the cactus
+            gameState.isGameOver = true;
         }
     });
 
@@ -421,15 +407,6 @@ function checkScorpionCollision(char, scorpion) {
                 cactusPart.x + cactusPart.width > scorpionPart.x &&
                 cactusPart.y < scorpionPart.y + scorpionPart.height &&
                 cactusPart.y + cactusPart.height > scorpionPart.y) {
-
-                // Calculate collision point (center of the overlapping area)
-                const overlapX = Math.min(cactusPart.x + cactusPart.width, scorpionPart.x + scorpionPart.width) - Math.max(cactusPart.x, scorpionPart.x);
-                const overlapY = Math.min(cactusPart.y + cactusPart.height, scorpionPart.y + scorpionPart.height) - Math.max(cactusPart.y, scorpionPart.y);
-
-                // Store collision point for explosion
-                gameState.explosion.x = Math.max(cactusPart.x, scorpionPart.x) + overlapX / 2;
-                gameState.explosion.y = Math.max(cactusPart.y, scorpionPart.y) + overlapY / 2;
-
                 return true;
             }
         }
@@ -477,15 +454,6 @@ function checkTumbleweedCollision(char, tumbleweed) {
                 cactusPart.x + cactusPart.width > tumbleweedPart.x &&
                 cactusPart.y < tumbleweedPart.y + tumbleweedPart.height &&
                 cactusPart.y + cactusPart.height > tumbleweedPart.y) {
-
-                // Calculate collision point (center of the overlapping area)
-                const overlapX = Math.min(cactusPart.x + cactusPart.width, tumbleweedPart.x + tumbleweedPart.width) - Math.max(cactusPart.x, tumbleweedPart.x);
-                const overlapY = Math.min(cactusPart.y + cactusPart.height, tumbleweedPart.y + tumbleweedPart.height) - Math.max(cactusPart.y, tumbleweedPart.y);
-
-                // Store collision point for explosion
-                gameState.explosion.x = Math.max(cactusPart.x, tumbleweedPart.x) + overlapX / 2;
-                gameState.explosion.y = Math.max(cactusPart.y, tumbleweedPart.y) + overlapY / 2;
-
                 return true;
             }
         }
@@ -496,7 +464,8 @@ function checkTumbleweedCollision(char, tumbleweed) {
 // Handle keyboard input
 const keys = {
     left: false,
-    right: false
+    right: false,
+    space: false
 };
 
 window.addEventListener('keydown', (e) => {
@@ -504,12 +473,19 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight') keys.right = true;
     if (e.key === ' ' && !gameState.gameStarted) {
         gameState.gameStarted = true;
+    } else if (e.key === ' ' && !gameState.isGameOver) {
+        keys.space = true;
+        // Fire thorn if none is active
+        if (!gameState.thorn.active) {
+            fireThorn();
+        }
     }
 });
 
 window.addEventListener('keyup', (e) => {
     if (e.key === 'ArrowLeft') keys.left = false;
     if (e.key === 'ArrowRight') keys.right = false;
+    if (e.key === ' ') keys.space = false;
 });
 
 // Update character position
@@ -675,6 +651,7 @@ function resetGame() {
     gameState.enemySpeed = 5; // Reset enemy speed
     gameState.maxEnemiesOnScreen = 3; // Reset max enemies to 3
     gameState.spawnChance = 0.7; // Reset spawn chance
+    gameState.thorn.active = false; // Reset thorn
     obstacles = [];
     initCharacter();
 }
@@ -688,34 +665,16 @@ function gameLoop() {
         // Draw title screen
         drawTitleScreen();
     } else if (!gameState.isGameOver) {
-        // Only update game state if explosion is not active
-        if (!gameState.explosion.active) {
-            updateCharacter();
-            updateObstacles();
-        } else {
-            // Update only the explosion animation
-            const currentTime = Date.now();
-            if (currentTime - gameState.explosion.lastFrameTime >= gameState.explosion.frameDelay) {
-                gameState.explosion.frame++;
-                gameState.explosion.lastFrameTime = currentTime;
-
-                // End explosion when complete
-                if (gameState.explosion.frame >= gameState.explosion.maxFrames) {
-                    gameState.explosion.active = false;
-                    gameState.isGameOver = true;
-                }
-            }
-        }
+        // Update game state
+        updateCharacter();
+        updateObstacles();
+        updateThorn(); // Update thorn position and check for collisions
 
         // Draw game elements
         drawCharacter();
         drawObstacles();
+        drawThorn(); // Draw the thorn
         drawScore();
-
-        // Draw explosion if active
-        if (gameState.explosion.active) {
-            drawExplosion();
-        }
     } else {
         drawGameOver();
     }
@@ -739,3 +698,67 @@ function init() {
 
 // Start the game
 init();
+
+// Fire a thorn
+function fireThorn() {
+    gameState.thorn.active = true;
+    gameState.thorn.x = character.x + character.width / 2 - gameState.thorn.width / 2;
+    gameState.thorn.y = character.y;
+}
+
+// Update thorn position and check for collisions
+function updateThorn() {
+    if (!gameState.thorn.active) return;
+
+    // Move thorn up
+    gameState.thorn.y -= gameState.thorn.speed;
+
+    // Check if thorn is off screen
+    if (gameState.thorn.y + gameState.thorn.height < 0) {
+        gameState.thorn.active = false;
+        return;
+    }
+
+    // Check for collisions with obstacles
+    for (let i = 0; i < obstacles.length; i++) {
+        const obstacle = obstacles[i];
+
+        // Simple collision detection
+        if (gameState.thorn.x < obstacle.x + obstacle.width &&
+            gameState.thorn.x + gameState.thorn.width > obstacle.x &&
+            gameState.thorn.y < obstacle.y + obstacle.height &&
+            gameState.thorn.y + gameState.thorn.height > obstacle.y) {
+
+            // Remove the obstacle
+            obstacles.splice(i, 1);
+
+            // Add points
+            gameState.score += 50;
+
+            // Deactivate the thorn
+            gameState.thorn.active = false;
+
+            // Create small explosion at impact point (doesn't end the game)
+            gameState.explosion.active = true;
+            gameState.explosion.x = gameState.thorn.x;
+            gameState.explosion.y = gameState.thorn.y;
+            gameState.explosion.frame = 0;
+            gameState.explosion.lastFrameTime = Date.now();
+            gameState.explosion.isGameEnding = false; // Mark this explosion as not game-ending
+
+            return;
+        }
+    }
+}
+
+// Draw thorn
+function drawThorn() {
+    if (!gameState.thorn.active) return;
+
+    ctx.fillStyle = '#2E8B57'; // Same color as cactus
+    ctx.fillRect(gameState.thorn.x, gameState.thorn.y, gameState.thorn.width, gameState.thorn.height);
+
+    // Add a highlight
+    ctx.fillStyle = '#3CB371';
+    ctx.fillRect(gameState.thorn.x + 1, gameState.thorn.y + 1, 3, 13);
+}
