@@ -507,7 +507,78 @@ function updateCharacter() {
     }
 }
 
-// Draw 8-bit title screen
+// Add button state to track if mouse/touch is over the button
+const buttonState = {
+    isOver: false
+};
+
+// Add mouse event listeners for the start button
+canvas.addEventListener('mousemove', (e) => {
+    if (!gameState.gameStarted) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Check if mouse is over the start button
+        const buttonWidth = 200;
+        const buttonHeight = 60;
+        const buttonX = canvas.width / 2 - buttonWidth / 2;
+        const buttonY = canvas.height / 2;
+
+        buttonState.isOver = (
+            x >= buttonX &&
+            x <= buttonX + buttonWidth &&
+            y >= buttonY &&
+            y <= buttonY + buttonHeight
+        );
+    }
+});
+
+canvas.addEventListener('click', (e) => {
+    if (!gameState.gameStarted && buttonState.isOver) {
+        gameState.gameStarted = true;
+        initCharacter();
+    }
+});
+
+// Modify the touchstart event to check for button tap
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    if (!gameState.gameStarted) {
+        // Check if touch is on the start button
+        const buttonWidth = 200;
+        const buttonHeight = 60;
+        const buttonX = canvas.width / 2 - buttonWidth / 2;
+        const buttonY = canvas.height / 2;
+
+        if (x >= buttonX &&
+            x <= buttonX + buttonWidth &&
+            y >= buttonY &&
+            y <= buttonY + buttonHeight) {
+            gameState.gameStarted = true;
+            initCharacter();
+            return;
+        }
+    }
+
+    // Handle other touch events
+    touchState.isDragging = true;
+    touchState.startX = touch.clientX;
+    touchState.lastX = touch.clientX;
+
+    if (gameState.isGameOver) {
+        resetGame();
+    } else if (!gameState.thorn.active) {
+        fireThorn();
+    }
+});
+
+// Modify the drawTitleScreen function to show button hover state
 function drawTitleScreen() {
     // Background
     ctx.fillStyle = '#87CEEB'; // Sky blue background
@@ -525,16 +596,16 @@ function drawTitleScreen() {
     const buttonX = canvas.width / 2 - buttonWidth / 2;
     const buttonY = canvas.height / 2;
 
-    // Button background
-    ctx.fillStyle = '#4CAF50'; // Green color
+    // Button background - change color when hovered
+    ctx.fillStyle = buttonState.isOver ? '#45a049' : '#4CAF50';
     ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
 
     // Button border
-    ctx.fillStyle = '#388E3C'; // Darker green for border
-    ctx.fillRect(buttonX, buttonY, buttonWidth, 10); // Top border
-    ctx.fillRect(buttonX, buttonY, 10, buttonHeight); // Left border
-    ctx.fillRect(buttonX, buttonY + buttonHeight - 10, buttonWidth, 10); // Bottom border
-    ctx.fillRect(buttonX + buttonWidth - 10, buttonY, 10, buttonHeight); // Right border
+    ctx.fillStyle = '#388E3C';
+    ctx.fillRect(buttonX, buttonY, buttonWidth, 10);
+    ctx.fillRect(buttonX, buttonY, 10, buttonHeight);
+    ctx.fillRect(buttonX, buttonY + buttonHeight - 10, buttonWidth, 10);
+    ctx.fillRect(buttonX + buttonWidth - 10, buttonY, 10, buttonHeight);
 
     // Button text
     ctx.fillStyle = '#FFFFFF';
