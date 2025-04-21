@@ -19,7 +19,7 @@ const gameState = {
     isGameOver: false,
     lastSpawnTime: 0,
     spawnInterval: 400, // Base spawn interval (0.4 seconds between spawns)
-    lastEnemyType: 'tumbleweed', // Track the last enemy type to ensure alternation
+    lastEnemyType: null, // Track the last enemy type to ensure alternation
     maxEnemiesOnScreen: 3, // Start with 3 enemies on screen
     gameStarted: false, // Track if the game has started
     explosion: {
@@ -27,10 +27,9 @@ const gameState = {
         x: 0,
         y: 0,
         frame: 0,
-        maxFrames: 15, // Number of frames for the explosion animation
-        frameDelay: 100, // Delay between frames in ms (for slow motion)
-        lastFrameTime: 0,
-        isGameEnding: false // Flag to indicate if this explosion ends the game
+        maxFrames: 8,
+        frameDelay: 50,
+        lastFrameTime: 0
     },
     difficultyLevel: 1, // Track the current difficulty level
     enemySpeed: 5, // Base enemy speed
@@ -342,6 +341,16 @@ function updateObstacles() {
     // Check for collisions
     obstacles.forEach(obstacle => {
         if (checkCollision(character, obstacle)) {
+            // Calculate collision point for explosion
+            const collisionPoint = findCollisionPoint(character, obstacle);
+
+            // Start explosion at collision point
+            gameState.explosion.active = true;
+            gameState.explosion.x = collisionPoint.x;
+            gameState.explosion.y = collisionPoint.y;
+            gameState.explosion.frame = 0;
+            gameState.explosion.lastFrameTime = currentTime;
+
             // Immediately end the game when an enemy touches the cactus
             gameState.isGameOver = true;
         }
@@ -574,7 +583,7 @@ function drawBackgroundCactus(x, y, scale) {
     ctx.fillRect(x + width + armWidth - Math.floor(5 * scale), y + height / 2 + armHeight, Math.floor(5 * scale), armHeight);
 }
 
-// Draw 8-bit explosion
+// Draw explosion animation
 function drawExplosion() {
     if (!gameState.explosion.active) return;
 
@@ -583,45 +592,34 @@ function drawExplosion() {
     const frame = gameState.explosion.frame;
 
     // Explosion colors
-    const colors = [
-        '#FF4500', // Orange-red
-        '#FF8C00', // Dark orange
-        '#FFD700', // Gold
-        '#FFFF00', // Yellow
-        '#FFFFFF'  // White
-    ];
-
-    // Determine which color to use based on frame
-    const colorIndex = Math.min(Math.floor(frame / 3), colors.length - 1);
-    ctx.fillStyle = colors[colorIndex];
-
-    // Explosion size increases with frame
-    const size = 5 + frame * 2;
+    const colors = ['#FF4500', '#FF8C00', '#FFD700', '#FFFF00'];
 
     // Draw explosion based on frame
-    if (frame < 5) {
-        // Small explosion
-        ctx.fillRect(x - size / 2, y - size / 2, size, size);
-    } else if (frame < 10) {
-        // Medium explosion
-        ctx.fillRect(x - size / 2, y - size / 2, size, size);
-        ctx.fillRect(x - size / 4, y - size, size / 2, size / 2);
-        ctx.fillRect(x - size / 4, y + size / 2, size / 2, size / 2);
-        ctx.fillRect(x - size, y - size / 4, size / 2, size / 2);
-        ctx.fillRect(x + size / 2, y - size / 4, size / 2, size / 2);
-    } else {
-        // Large explosion
-        ctx.fillRect(x - size / 2, y - size / 2, size, size);
-        ctx.fillRect(x - size / 4, y - size, size / 2, size / 2);
-        ctx.fillRect(x - size / 4, y + size / 2, size / 2, size / 2);
-        ctx.fillRect(x - size, y - size / 4, size / 2, size / 2);
-        ctx.fillRect(x + size / 2, y - size / 4, size / 2, size / 2);
+    ctx.fillStyle = colors[frame % colors.length];
 
-        // Additional particles
-        ctx.fillRect(x - size / 2, y - size / 2, size / 4, size / 4);
-        ctx.fillRect(x + size / 4, y - size / 2, size / 4, size / 4);
-        ctx.fillRect(x - size / 2, y + size / 4, size / 4, size / 4);
-        ctx.fillRect(x + size / 4, y + size / 4, size / 4, size / 4);
+    // Draw expanding circles
+    const radius = 5 + frame * 3;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw inner explosion
+    if (frame > 2) {
+        ctx.fillStyle = colors[(frame + 2) % colors.length];
+        ctx.beginPath();
+        ctx.arc(x, y, radius * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Draw particles
+    for (let i = 0; i < 8; i++) {
+        const angle = (Math.PI * 2 / 8) * i;
+        const distance = radius * 0.8;
+        const particleX = x + Math.cos(angle) * distance;
+        const particleY = y + Math.sin(angle) * distance;
+
+        ctx.fillStyle = colors[(frame + i) % colors.length];
+        ctx.fillRect(particleX - 2, particleY - 2, 4, 4);
     }
 }
 
@@ -644,7 +642,7 @@ function resetGame() {
     gameState.score = 0;
     gameState.isGameOver = false;
     gameState.lastSpawnTime = 0;
-    gameState.lastEnemyType = 'tumbleweed'; // Reset the last enemy type
+    gameState.lastEnemyType = null; // Reset the last enemy type
     gameState.gameStarted = true; // Keep the game started
     gameState.difficultyLevel = 1; // Reset difficulty level
     gameState.spawnInterval = 400; // Reset spawn interval
@@ -676,7 +674,26 @@ function gameLoop() {
         drawThorn(); // Draw the thorn
         drawScore();
     } else {
+        // Update explosion animation even after game over
+        if (gameState.explosion.active) {
+            const currentTime = Date.now();
+            if (currentTime - gameState.explosion.lastFrameTime >= gameState.explosion.frameDelay) {
+                gameState.explosion.frame++;
+                gameState.explosion.lastFrameTime = currentTime;
+
+                // End explosion when complete
+                if (gameState.explosion.frame >= gameState.explosion.maxFrames) {
+                    gameState.explosion.active = false;
+                }
+            }
+        }
+
         drawGameOver();
+    }
+
+    // Draw explosion if active
+    if (gameState.explosion.active) {
+        drawExplosion();
     }
 
     // Request next frame
@@ -761,4 +778,81 @@ function drawThorn() {
     // Add a highlight
     ctx.fillStyle = '#3CB371';
     ctx.fillRect(gameState.thorn.x + 1, gameState.thorn.y + 1, 3, 13);
+}
+
+// Find the collision point between character and obstacle
+function findCollisionPoint(char, obstacle) {
+    // Get cactus body parts
+    const cactusParts = getCactusBodyParts(char.x, char.y);
+
+    // Define obstacle parts based on type
+    let obstacleParts = [];
+    if (obstacle.type === 'scorpion') {
+        obstacleParts = [
+            // Main body
+            { x: obstacle.x + 25, y: obstacle.y + 30, width: 20, height: 15 },
+            // Head
+            { x: obstacle.x + 45, y: obstacle.y + 25, width: 15, height: 10 },
+            // Tail segments
+            { x: obstacle.x + 10, y: obstacle.y + 45, width: 10, height: 10 },
+            { x: obstacle.x + 5, y: obstacle.y + 35, width: 10, height: 10 },
+            { x: obstacle.x + 8, y: obstacle.y + 25, width: 10, height: 10 },
+            { x: obstacle.x + 12, y: obstacle.y + 15, width: 10, height: 10 },
+            // Claws
+            { x: obstacle.x + 15, y: obstacle.y + 20, width: 12, height: 8 },
+            { x: obstacle.x + 10, y: obstacle.y + 15, width: 8, height: 8 },
+            { x: obstacle.x + 53, y: obstacle.y + 20, width: 12, height: 8 },
+            { x: obstacle.x + 55, y: obstacle.y + 15, width: 8, height: 8 }
+        ];
+    } else if (obstacle.type === 'tumbleweed') {
+        obstacleParts = [
+            // Center
+            { x: obstacle.x + 35, y: obstacle.y + 35, width: 10, height: 10 },
+            // Main body
+            { x: obstacle.x + 30, y: obstacle.y + 25, width: 20, height: 10 },
+            { x: obstacle.x + 30, y: obstacle.y + 45, width: 20, height: 10 },
+            { x: obstacle.x + 25, y: obstacle.y + 30, width: 10, height: 20 },
+            { x: obstacle.x + 45, y: obstacle.y + 30, width: 10, height: 20 },
+            // Spikes
+            { x: obstacle.x + 25, y: obstacle.y + 20, width: 5, height: 5 },
+            { x: obstacle.x + 35, y: obstacle.y + 15, width: 10, height: 5 },
+            { x: obstacle.x + 50, y: obstacle.y + 20, width: 5, height: 5 },
+            { x: obstacle.x + 25, y: obstacle.y + 55, width: 5, height: 5 },
+            { x: obstacle.x + 35, y: obstacle.y + 60, width: 10, height: 5 },
+            { x: obstacle.x + 50, y: obstacle.y + 55, width: 5, height: 5 },
+            { x: obstacle.x + 15, y: obstacle.y + 25, width: 5, height: 5 },
+            { x: obstacle.x + 10, y: obstacle.y + 35, width: 5, height: 10 },
+            { x: obstacle.x + 15, y: obstacle.y + 50, width: 5, height: 5 },
+            { x: obstacle.x + 60, y: obstacle.y + 25, width: 5, height: 5 },
+            { x: obstacle.x + 65, y: obstacle.y + 35, width: 5, height: 10 },
+            { x: obstacle.x + 60, y: obstacle.y + 50, width: 5, height: 5 }
+        ];
+    }
+
+    // Find the first collision point
+    for (let i = 0; i < cactusParts.length; i++) {
+        const cactusPart = cactusParts[i];
+
+        for (let j = 0; j < obstacleParts.length; j++) {
+            const obstaclePart = obstacleParts[j];
+
+            if (cactusPart.x < obstaclePart.x + obstaclePart.width &&
+                cactusPart.x + cactusPart.width > obstaclePart.x &&
+                cactusPart.y < obstaclePart.y + obstaclePart.height &&
+                cactusPart.y + cactusPart.height > obstaclePart.y) {
+
+                // Calculate collision point (center of the overlapping area)
+                const overlapX = Math.min(cactusPart.x + cactusPart.width, obstaclePart.x + obstaclePart.width) - Math.max(cactusPart.x, obstaclePart.x);
+                const overlapY = Math.min(cactusPart.y + cactusPart.height, obstaclePart.y + obstaclePart.height) - Math.max(cactusPart.y, obstaclePart.y);
+
+                return {
+                    x: Math.max(cactusPart.x, obstaclePart.x) + overlapX / 2,
+                    y: Math.max(cactusPart.y, obstaclePart.y) + overlapY / 2
+                };
+            }
+        }
+    }
+
+    // Fallback to center of character if no specific collision point is found
+    return { x: char.x + 40, y: char.y + 40 };
 }
