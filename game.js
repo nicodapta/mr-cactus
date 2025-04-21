@@ -548,6 +548,19 @@ function drawTitleScreen() {
         ctx.font = '18px Arial';
         ctx.fillText('Press SPACE to start', canvas.width / 2, buttonY + buttonHeight + 40);
     }
+
+    // Draw controls instruction
+    ctx.fillStyle = '#000000';
+    ctx.font = '16px Arial';
+
+    // Check if the device is mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if (isMobile) {
+        ctx.fillText('Drag to move, tap to shoot', canvas.width / 2, buttonY + buttonHeight + 80);
+    } else {
+        ctx.fillText('Use ← → to move, SPACE to shoot', canvas.width / 2, buttonY + buttonHeight + 80);
+    }
 }
 
 // Draw background cactus
@@ -856,3 +869,59 @@ function findCollisionPoint(char, obstacle) {
     // Fallback to center of character if no specific collision point is found
     return { x: char.x + 40, y: char.y + 40 };
 }
+
+// Touch controls state
+const touchState = {
+    isDragging: false,
+    startX: 0,
+    lastX: 0
+};
+
+// Add touch event listeners
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault(); // Prevent default touch behavior
+    const touch = e.touches[0];
+    touchState.isDragging = true;
+    touchState.startX = touch.clientX;
+    touchState.lastX = touch.clientX;
+
+    // If game hasn't started, start it
+    if (!gameState.gameStarted) {
+        gameState.gameStarted = true;
+        initCharacter();
+    }
+    // If game is over, restart it
+    else if (gameState.isGameOver) {
+        resetGame();
+    }
+    // If game is in progress, shoot
+    else if (!gameState.thorn.active) {
+        fireThorn();
+    }
+});
+
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault(); // Prevent default touch behavior
+    if (!touchState.isDragging) return;
+
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchState.lastX;
+    touchState.lastX = touch.clientX;
+
+    // Move character based on drag
+    if (deltaX > 0 && character.x < canvas.width - character.width) {
+        character.x += Math.min(deltaX, character.speed);
+    } else if (deltaX < 0 && character.x > 0) {
+        character.x += Math.max(deltaX, -character.speed);
+    }
+});
+
+canvas.addEventListener('touchend', (e) => {
+    e.preventDefault(); // Prevent default touch behavior
+    touchState.isDragging = false;
+});
+
+// Prevent scrolling when touching the canvas
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+}, { passive: false });
